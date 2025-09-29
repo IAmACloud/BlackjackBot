@@ -94,3 +94,31 @@ To do: update based on movement. Add in requests for camera up/down
 
 
 ## Movement
+- Initialize
+- Has a subscriber for
+  - turn x direction
+  - Move Camera up
+  - Move Camera down
+  - Deal Card
+  - Celebrate
+  - Deck position
+  
+- Has a publisher for
+  - Movement Complete
+  - Camera Up
+  - Camera Down
+    
+- Publish a request for deck position
+- Deal 2 cards to every player (including house, house gets 1 card though) [We are assuming card reads while dealing]
+- Turn direction
+- Publish Movement Complete
+- Move Camera up
+- Publish Camera up
+- Listen (while true)
+- switch(action):
+  - Deal card -> Movement complete
+  - Turn x direction -> Movement complete
+  - Move Camera up -> Publish Camera up
+  - Move Camera down -> Publish Camera down
+  - Celebrate -> Movement comnplete
+  - Return to start pos -> Movement complete
