@@ -95,9 +95,9 @@
 - Publish Camera up
 - Listen (while true)
 - switch(action):
-   Deal card -> Movement complete
-   Turn x direction -> Movement complete
-   Move Camera up -> Publish Camera up
-   Move Camera down -> Publish Camera down
-   Celebrate -> Movement comnplete
-   Return to start pos -> Movement complete
+  - Deal card -> Movement complete
+  - Turn x direction -> Movement complete
+  - Move Camera up -> Publish Camera up
+  - Move Camera down -> Publish Camera down
+  - Celebrate -> Movement comnplete
+  - Return to start pos -> Movement complete
