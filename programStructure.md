@@ -1,9 +1,15 @@
 # Program structure
 
+https://officialgamerules.org/game-rules/blackjack/
+
+
+To do: update based on movement. Add in requests for camera up/down
 ## FSM for full program
 - Has a subscriber for:
-  - card has been dealt
+  - Card information
+  - Action information
   - movement complete
+  - camera movement complete
 - Has a publisher that publishes:
   - deal card
   - turn x direction
@@ -11,9 +17,12 @@
   - stop looking for rps
   - look for cards
   - stop looking for cards
+  - move camera
   - Celebrate (myself, the players) movement
   - Tie movement
   - Point (this might just be turning)
+  - start game (for movement to do first deal of cards to players and self)
+  - end game (for setting all motor positions back to start)
 - Parameters set in the file:
   - Location of players
   - Set number of players (probably only 1/2, 3 may be difficult)
@@ -22,18 +31,28 @@
   - Fake gesture input (command line input)
   - Location of deck grab
 - General structure:
-  - See players (may include rotations)
-  - Deal House card
-  - Wait for deal
-  - Deal one card per player
-  - wait for deal
+  - Start game (this is done by movement, just wait for movement complete)
+    - Camera up
+    - Deal House card
+    - Wait for deal
+    - Deal one card per player
+    - wait for deal
+  - Wait for movement complete
   - Face player that is next
-  - Look for action
-  - Either deal or nothing. If deal, check cards. If not over, then return to look for action
+  - Camera up (movement)
+  - Wait for camera movement complete
+  - Look for action (vision)
+  - Waiting for action from vision
+  - Either deal or nothing. 
+    - If deal, check cards (camera down), if first time for player, check cards. 
+    - If not over, then return to camera up
   - If more players, return to face next player
   - Turn to house
+  - Camera down
+  - Wait for camera movement complete
   - Select house optimal move (deal at least once)
-  - Check new card
+  - Check new card (vision)
+  - Wait for new card information
   - Return to house optimal move
   - Deliberate winners
   - Celebrate winners somehow
@@ -41,6 +60,8 @@
   - Number of cards each player has (can be used for deciding where to place the cards)
   - value of cards
   - Deck load (so we know where to grab)
+  - Current game state
+  - Current camera position
 
 
 ## Vision:
