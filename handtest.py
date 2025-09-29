@@ -8,16 +8,18 @@ cap = cv2.VideoCapture(0)
 cap.set(3, 640)
 cap.set(4, 480)
 
-# Load the weights from our repository
-model_path = hf_hub_download(
-    local_dir=".",
-    repo_id="fairportrobotics/rock-paper-scissors",
-    filename="model.pt"
-)
+# # Load the weights from our repository
+# model_path = hf_hub_download(
+#     local_dir=".",
+#     repo_id="fairportrobotics/rock-paper-scissors",
+#     filename="model.pt"
+# )?
+model_path = YOLO('yolo11-rps-detection.pt')
+
 model = YOLO(model_path)
 
 # object classes
-classNames = ["rock", "paper", "scissors"]
+classNames = ["paper", "rock", "scissors"]
 
 
 while True:
