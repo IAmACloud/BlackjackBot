@@ -12,10 +12,13 @@ services:
     network_mode: host
     command: >
       bash -c "
+      apt-get update &&
+      apt-get install -y python3-catkin-tools python3-osrf-pycommon &&
       source /opt/ros/noetic/setup.bash &&
       mkdir -p /root/catkin_ws/src &&
       cd /root/catkin_ws &&
-      /opt/ros/noetic/bin/catkin_make &&
+      catkin init &&
+      catkin build &&
       source devel/setup.bash &&
       bash"
     stdin_open: true
