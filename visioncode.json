@@ -1,0 +1,15 @@
+{
+    "CreatedAt": "2025-10-01T14:08:24Z",
+    "Driver": "local",
+    "Labels": {
+        "project": "blackjackbot"
+    },
+    "Mountpoint": "c:/Users/naido/Documents/ChalmersCourses/TIF160_HumanoidRobotics/ProjectRepo/BlackjackBot",
+    "Name": "blackjackbot-volume",
+    "Options": {
+        "type": "none",
+        "device": "c:/Users/naido/Documents/ChalmersCourses/TIF160_HumanoidRobotics/ProjectRepo/BlackjackBot",
+        "o": "bind"
+    },
+    "Scope": "local"
+}

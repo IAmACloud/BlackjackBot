@@ -2,8 +2,6 @@
 
 https://officialgamerules.org/game-rules/blackjack/
 
-
-To do: update based on movement. Add in requests for camera up/down
 ## FSM for full program
 - Has a subscriber for:
   - Card information
