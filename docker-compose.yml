@@ -1,0 +1,22 @@
+version: '3'
+services:
+  ros_noetic:
+    image: osrf/ros:noetic-desktop-full
+    container_name: blackjack_bot
+    environment:
+      - DISPLAY=$DISPLAY
+      - QT_X11_NO_MITSHM=1
+    volumes:
+      - .:/root/catkin_ws/src/blackjack_bot
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    network_mode: host
+    command: >
+      bash -c "
+      source /opt/ros/noetic/setup.bash &&
+      mkdir -p /root/catkin_ws/src &&
+      cd /root/catkin_ws &&
+      /opt/ros/noetic/bin/catkin_make &&
+      source devel/setup.bash &&
+      bash"
+    stdin_open: true
+    tty: true

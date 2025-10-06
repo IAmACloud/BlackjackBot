@@ -7,9 +7,11 @@ from movement_pkg.msg import MovementControl, MovementComplete
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from enum import Enum
+# TODO: Add in ready messages for vision and movement so that fsm knows that the subcomponents are running. Or they could just sent messages until we are ready?
 
 class GameState(Enum):
-    INIT = 0
+    INIT = 0 # TODO: add in checking for vision and movement messages being sent to confirm all subcomponents running
+    # TODO: add in state where we check if there are players (they hold up scissors?)
     START_GAME = 1
     DEALING_INITIAL = 2
     PLAYER_TURN = 3
