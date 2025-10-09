@@ -1,18 +1,9 @@
-/*
-  Blackjack Robot Movement Control
-
-  This sketch controls the robotic arm for blackjack game.
-  Receives commands from ROS movement node via serial.
-  Commands: TURN <player>, DEAL <player>, CAMERA_UP/DOWN, CELEBRATE <player>, TIE, END_GAME
-
-  created based on Hubert robot
-  modified for blackjack game
-*/
 
 #include <Arduino.h>
 #include <Servo.h>
 
-// Servos
+
+//Servos
 Servo body;
 Servo headPan;
 Servo headTilt;
@@ -20,6 +11,18 @@ Servo shoulder;
 Servo elbow;
 Servo gripper;
 Servo wrist;
+
+//Publisher
+std_msgs::bool complete;
+ros::Publisher movement_complete("movement_complete", complete);
+ros::Publisher camera_up("camera_up", complete);
+ros::Publisher camera_down("camera_down", complete);
+
+//Subscriber
+ros::Subscriber<std_msgs::string> sub("/deal_card", deal_card);
+ros::Subscriber<std_msgs::string> sub("/turn_direction", turn_direction);
+ros::Subscriber<std_msgs::string> sub("/celebrate", celebrate);
+ros::Subscriber<std_msgs::string> sub("/move_camera", move_camera);
 
 // Enum for servo indices
 enum ServoIndex {
@@ -33,50 +36,56 @@ enum ServoIndex {
   SERVO_COUNT = 7
 };
 
-// Servo pins
+//Init position of all servos
 const int servo_pins[SERVO_COUNT] = {3, 5, 6, 9, 10, 11, 8};
 
-// Current positions
 int curr_pos[SERVO_COUNT];
 
-// Initial position (relaxed)
-const int pos_init[SERVO_COUNT] = {1700, 1500, 2000, 2300, 900, 1000, 450};
+// to be updated
+const int bodyDodge = 550;
+const int bodyDeck = 1300;
+const int bodyP1 = 1700;
+const int bodyP2 = 2000;
+const int bodyHouse = 2200;
 
-// Player positions (body servo)
-const int pos_house[SERVO_COUNT] = {1700, 1500, 2000, 2300, 900, 1000, 450}; // Same as init
-const int pos_player1[SERVO_COUNT] = {2100, 1500, 2000, 2300, 900, 1000, 450}; // Right
-const int pos_player2[SERVO_COUNT] = {1300, 1500, 2000, 2300, 900, 1000, 450}; // Left
+const int headUp = 2000;
+const int headDown = 1700;
 
-// Camera positions (headTilt servo)
-const int pos_camera_up[SERVO_COUNT] = {1700, 1500, 2000, 2300, 900, 1000, 450}; // Higher
-const int pos_camera_down[SERVO_COUNT] = {1700, 1500, 1500, 2300, 900, 1000, 450}; // Lower
+const int shoulderCelebrate = 1500;
 
-// Deck position for picking cards
-const int pos_deck[SERVO_COUNT] = {1700, 1700, 2000, 2300, 1750, 1000, 450};
+const int elbowRaised = 2100;
+const int elbowDeck = 1750;
+const int elbowPlace = 1500;
 
-// Place positions for each player (adjust elbow/wrist for card placement)
-const int pos_place_house[SERVO_COUNT] = {1700, 2000, 2000, 2300, 1500, 1500, 1850};
-const int pos_place_player1[SERVO_COUNT] = {2100, 2000, 2000, 2300, 1500, 1500, 1850};
-const int pos_place_player2[SERVO_COUNT] = {1300, 2000, 2000, 2300, 1500, 1500, 1850};
+const int gripperOpen = 1000;
+const int gripperClosed = 1500;
 
-// Celebrate positions (wave with headPan)
-const int pos_celebrate[SERVO_COUNT] = {1700, 1200, 2000, 2300, 900, 1000, 450}; // Left wave
-const int pos_celebrate_back[SERVO_COUNT] = {1700, 1800, 2000, 2300, 900, 1000, 450}; // Right wave
+const int wristNeutral = 450;
+const int wristPlace = 1850;
 
-// Command buffer
-String command = "";
+
+const int pos_init[SERVO_COUNT] =  {1700, 1500, 2000, 2300, 900, 1000, 450};
+const int pos_dodge[SERVO_COUNT] = {900, 2000, 2000, 2300, 2100, 1000, 450};
+const int pos_deck[SERVO_COUNT] =  {2100, 2000, 2000, 2300, 2100, 1000, 450};
+const int pos_pick[SERVO_COUNT] =  {2100, 1700, 2000, 2300, 1750, 1000, 450};
+const int pos_place[SERVO_COUNT] = {1700, 2000, 2000, 2300, 1500, 1500, 1850};
+
+int count = 0;
 
 void actuate_servo(Servo &servo, int servo_index, const int new_pos) {
   int diff, steps, now, CurrPwm, NewPwm, delta = 6;
 
+  // current servo value
   now = curr_pos[servo_index];
   CurrPwm = now;
   NewPwm = new_pos;
 
-  if (CurrPwm == NewPwm) return;
+  if (CurrPwm == NewPwm) return; // No movement needed
 
+  // determine direction (+1 or -1)
   diff = (NewPwm - CurrPwm) / abs(NewPwm - CurrPwm);
   steps = abs(NewPwm - CurrPwm);
+  delay(10);
 
   for (int i = 0; i < steps; i += delta) {
     now = now + delta * diff;
@@ -87,152 +96,226 @@ void actuate_servo(Servo &servo, int servo_index, const int new_pos) {
   delay(10);
 }
 
-void move_to_position(const int target_pos[SERVO_COUNT]) {
-  actuate_servo(body, BODY, target_pos[BODY]);
-  actuate_servo(headPan, HEAD_PAN, target_pos[HEAD_PAN]);
-  actuate_servo(headTilt, HEAD_TILT, target_pos[HEAD_TILT]);
-  actuate_servo(shoulder, SHOULDER, target_pos[SHOULDER]);
-  actuate_servo(elbow, ELBOW, target_pos[ELBOW]);
-  actuate_servo(gripper, GRIPPER, target_pos[GRIPPER]);
-  actuate_servo(wrist, WRIST, target_pos[WRIST]);
+// Move to dodge pos
+void actuate_dodge() {
+  actuate_servo(headPan, HEAD_PAN, headUp);
+  actuate_servo(body, BODY, bodyDodge);
+  actuate_servo(elbow, ELBOW, elbowRaised);
+} 
+
+void actuate_headUp() {
+  actuate_servo(headPan, HEAD_PAN, headUp);
 }
 
-void turn_to_player(int player) {
-  if (player == 0) {
-    move_to_position(pos_house);
-  } else if (player == 1) {
-    move_to_position(pos_player1);
-  } else if (player == 2) {
-    move_to_position(pos_player2);
+void actuate_headDown() {
+  actuate_servo(headPan, HEAD_PAN, headDown);
+}
+
+void actuate_turnP1() {
+  actuate_servo(body, BODY, bodyP1);
+} 
+
+void actuate_turnP2() {
+  actuate_servo(body, BODY, bodyP2);
+} 
+
+void actuate_turnHouse() {
+  actuate_servo(body, BODY, bodyHouse);
+} 
+
+// Pick card from deck
+void actuate_deck() {
+  actuate_servo(body, BODY, bodyDeck);
+  actuate_servo(elbow, ELBOW, elbowDeck);
+  actuate_servo(elbow, ELBOW, elbowRaised);
+}
+
+// Deal card to Player 1
+void actuate_dealP1() {
+  actuate_servo(body, BODY, bodyP1);
+  actuate_servo(wrist, WRIST, wristPlace);
+  actuate_servo(elbow, ELBOW, elbowPlace);
+  actuate_servo(wrist, WRIST, wristNeutral);
+  actuate_servo(gripper, GRIPPER, gripperOpen);
+  actuate_servo(elbow, ELBOW, elbowRaised);
+  actuate_servo(gripper, GRIPPER, gripperClosed);
+  actuate_servo(headPan, HEAD_PAN, headDown);
+} 
+
+// Deal card to Player 2
+void actuate_dealP2() {
+  actuate_servo(body, BODY, bodyP2);
+  actuate_servo(wrist, WRIST, wristPlace);
+  actuate_servo(elbow, ELBOW, elbowPlace);
+  actuate_servo(wrist, WRIST, wristNeutral);
+  actuate_servo(gripper, GRIPPER, gripperOpen);
+  actuate_servo(elbow, ELBOW, elbowRaised);
+  actuate_servo(gripper, GRIPPER, gripperClosed);
+  actuate_servo(headPan, HEAD_PAN, headDown);
+} 
+
+// Deal card to House
+void actuate_dealHouse() {
+  actuate_servo(body, BODY, bodyHouse);
+  actuate_servo(wrist, WRIST, wristPlace);
+  actuate_servo(elbow, ELBOW, elbowPlace);
+  actuate_servo(wrist, WRIST, wristNeutral);
+  actuate_servo(gripper, GRIPPER, gripperOpen);
+  actuate_servo(elbow, ELBOW, elbowRaised);
+  actuate_servo(gripper, GRIPPER, gripperClosed);
+  actuate_servo(headPan, HEAD_PAN, headDown);
+} 
+
+// Celebrate Player 1
+void actuate_celebrateP1() {
+  actuate_servo(body, BODY, bodyP1);
+  actuate_servo(wrist, WRIST, wristPlace);
+  actuate_servo(wrist, WRIST, wristNeutral);
+  actuate_servo(wrist, WRIST, wristPlace);
+  actuate_servo(wrist, WRIST, wristNeutral);
+}
+
+// Celebrate Player 2
+void actuate_celebrateP2() {
+  actuate_servo(body, BODY, bodyP2);
+  actuate_servo(wrist, WRIST, wristPlace);
+  actuate_servo(wrist, WRIST, wristNeutral);
+  actuate_servo(wrist, WRIST, wristPlace);
+  actuate_servo(wrist, WRIST, wristNeutral);
+}
+
+// Celebrate House
+void actuate_celebrateP1() {
+  actuate_servo(body, BODY, bodyHouse);
+  actuate_servo(shoulder, SHOULDER, shoulderCelebrate);
+  actuate_servo(elbow, ELBOW, elbowDeck);
+  actuate_servo(elbow, ELBOW, elbowRaised);
+  actuate_servo(shoulder, SHOULDER, pos_init[SHOULDER]);
+}
+
+//Functions for the messages we subscribe for:
+void deal_card(std_msgs::string deal_msg){
+  switch(deal_msg){
+    case "DEAL 0":
+      //deal to p1
+      movement_complete.publish(true);
+      break;
+    
+    case "DEAL 1":
+      //deal to p2
+      movement_complete.publish(true);
+      break;
+
+    case "DEAL 2":
+      //deal to house
+      movement_complete.publish(true);
+      break;
+    
+    default:
+      //bad string
+      movement_complete.publish(false);
+      break;
   }
 }
 
-void camera_up() {
-  actuate_servo(headTilt, HEAD_TILT, pos_camera_up[HEAD_TILT]);
-}
-
-void camera_down() {
-  actuate_servo(headTilt, HEAD_TILT, pos_camera_down[HEAD_TILT]);
-}
-
-void deal_card(int player) {
-  // Go to deck
-  move_to_position(pos_deck);
-  delay(500);
-
-  // Close gripper to pick
-  actuate_servo(gripper, GRIPPER, 1500); // Closed
-  delay(500);
-
-  // Lift slightly
-  actuate_servo(elbow, ELBOW, 1900);
-  delay(500);
-
-  // Go to player position
-  if (player == 0) {
-    move_to_position(pos_place_house);
-  } else if (player == 1) {
-    move_to_position(pos_place_player1);
-  } else if (player == 2) {
-    move_to_position(pos_place_player2);
-  }
-  delay(500);
-
-  // Open gripper to place
-  actuate_servo(gripper, GRIPPER, 1000); // Open
-  delay(500);
-
-  // Back to hover
-  actuate_servo(elbow, ELBOW, 2100);
-  delay(500);
-}
-
-void celebrate_player(int player) {
-  // Turn to player
-  turn_to_player(player);
-  delay(500);
-
-  // Wave
-  for (int i = 0; i < 3; i++) {
-    move_to_position(pos_celebrate);
-    delay(300);
-    move_to_position(pos_celebrate_back);
-    delay(300);
+void turn_direction(std_msgs::string turn_msg){
+  switch(turn_msg){
+    case "TURN 0":
+      //turn to p1
+      movement_complete.publish(true);
+      break;
+    case "TURN 1";
+      //turn to p2
+      movement_complete.publish(true);
+      break;
+    case "TURN 2";
+      //turn to house
+      movement_complete.publish(true);
+      break;
+    default:
+      //bad message
+      movement_complete.publish(false);
+      break;
   }
 }
 
-void tie_celebrate() {
-  // Celebrate each player
-  celebrate_player(1);
-  delay(1000);
-  celebrate_player(2);
-  delay(1000);
-  celebrate_player(0);
+void celebrate(std_msgs::string celeb_msg){  
+  switch(celeb_msg){
+    case "CELEBRATE 0":
+      //celebrate p1
+      movement_complete.publish(true);
+      break;
+    case "CELEBRATE 1";
+      movement_complete.publish(true);
+      //celebrate p2
+      break;
+    case "CELEBRATE 2";
+      //celebrate house
+      movement_complete.publish(true);
+      break;
+    default:
+      //bad message
+      movement_complete.publish(false);
+      break;
+  }
 }
 
-void end_game() {
-  move_to_position(pos_init);
-}
-
-void process_command(String cmd) {
-  cmd.trim();
-  cmd.toUpperCase();
-
-  if (cmd.startsWith("TURN ")) {
-    int player = cmd.substring(5).toInt();
-    turn_to_player(player);
-    Serial.println("DONE");
-  } else if (cmd == "CAMERA_UP") {
-    camera_up();
-    Serial.println("DONE");
-  } else if (cmd == "CAMERA_DOWN") {
-    camera_down();
-    Serial.println("DONE");
-  } else if (cmd.startsWith("DEAL ")) {
-    int player = cmd.substring(5).toInt();
-    deal_card(player);
-    Serial.println("DONE");
-  } else if (cmd.startsWith("CELEBRATE ")) {
-    int player = cmd.substring(10).toInt();
-    celebrate_player(player);
-    Serial.println("DONE");
-  } else if (cmd == "TIE") {
-    tie_celebrate();
-    Serial.println("DONE");
-  } else if (cmd == "END_GAME") {
-    end_game();
-    Serial.println("DONE");
-  } else {
-    Serial.println("ERROR: Unknown command");
+void move_camera(std_msgs::string cam_msg){
+  switch(cam_msg){
+    case "CAMERA UP":
+      //move camera up
+      actuate_headUp();
+      camera_up.publish(true);
+      break;
+    case "CAMERA DOWN";
+      //move camera down
+      actuate_headDown();
+      camera_down.publish(true);
+      break;
+    default:
+      break;
   }
 }
 
 void setup() {
-  Serial.begin(9600); // Match movement node baud rate
+  Serial.begin(57600); // Starts the serial communication
 
-  // Attach servos
-  body.attach(servo_pins[BODY]);
-  headPan.attach(servo_pins[HEAD_PAN]);
-  headTilt.attach(servo_pins[HEAD_TILT]);
-  shoulder.attach(servo_pins[SHOULDER]);
-  elbow.attach(servo_pins[ELBOW]);
-  gripper.attach(servo_pins[GRIPPER]);
-  wrist.attach(servo_pins[WRIST]);
+	//Attach each joint servo
+	//and write each init position
+  body.attach(servo_pins[0]);
+  body.writeMicroseconds(pos_init[0]);
 
-  // Set initial positions
-  move_to_position(pos_init);
+  headPan.attach(servo_pins[1]);
+  headPan.writeMicroseconds(pos_init[1]);
 
-  Serial.println("Blackjack movement ready.");
+  headTilt.attach(servo_pins[2]);
+  headTilt.writeMicroseconds(pos_init[2]);
+
+  shoulder.attach(servo_pins[3]);
+	shoulder.writeMicroseconds(pos_init[3]);
+
+	elbow.attach(servo_pins[4]);
+	elbow.writeMicroseconds(pos_init[4]);
+
+	gripper.attach(servo_pins[5]);
+  gripper.writeMicroseconds(pos_init[5]);
+
+  wrist.attach(servo_pins[6]);
+  wrist.writeMicroseconds(pos_init[6]);
+
+  Serial.println("Hubert test program started.");
+
+  // We keep track of the current poses in the curr_pos array
+  byte i;
+  for (i=0; i<(sizeof(pos_init)/sizeof(int)); i++){
+    curr_pos[i] = pos_init[i];
+  }
+
+	delay(2000);
 }
 
 void loop() {
-  if (Serial.available() > 0) {
-    char c = Serial.read();
-    if (c == '\n') {
-      process_command(command);
-      command = "";
-    } else {
-      command += c;
-    }
-  }
+  hubert.spinOnce();
+  
+
 }
