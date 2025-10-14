@@ -5,11 +5,7 @@
 # and processing results from the vision node.
 
 import rospy
-from std_msgs.msg import Header, String, Bool, Int32
-from vision_pkg.msg import RpsResult, CardResult, VisionControl
-from movement_pkg.msg import MovementControl, MovementComplete
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge, CvBridgeError
+from std_msgs.msg import Bool, UInt8, String
 from enum import Enum
 
 class GameState(Enum):
@@ -41,13 +37,13 @@ class BlackjackFSM:
         self.player_values = [0] * (self.num_players + 1)
         
         # Publishers
-        self.movement_control = rospy.Publisher('/movement/control', MovementControl, queue_size=10)
-        self.vision_control = rospy.Publisher('/vision/control', VisionControl, queue_size=10)
+        self.movement_control = rospy.Publisher('/movement/control', String, queue_size=10)
+        self.vision_control = rospy.Publisher('/vision/control', String, queue_size=10)
         
         # Subscribers
-        rospy.Subscriber('/vision/card_result', CardResult, self.card_callback)
-        rospy.Subscriber('/vision/rps_result', RpsResult, self.rps_callback)
-        rospy.Subscriber('/movement/complete', MovementComplete, self.movement_callback)
+        rospy.Subscriber('/vision/card_result', String, self.card_callback)
+        rospy.Subscriber('/vision/rps_result', UInt8, self.rps_callback)
+        rospy.Subscriber('/movement/complete', Bool, self.movement_callback)
         
         # Flags for sequencing
         self.turn_done = False
@@ -56,18 +52,18 @@ class BlackjackFSM:
         self.card_checked = False
         self.house_dealing = False
     
-    def card_callback(self, msg: CardResult):
-        self.last_card = msg.card
+    def card_callback(self, msg: String):
+        self.last_card = msg.data
         self.vision_ready = True  # Assume ready on first message
     
-    def rps_callback(self, msg: RpsResult):
+    def rps_callback(self, msg: UInt8):
         # Map result to action: 1=R(hit), 2=P(stay), 3=S(stay)
         actions = {1: 'hit', 2: 'stay', 3: 'stay'}
-        self.last_rps = actions.get(msg.result, 'stay')
+        self.last_rps = actions.get(msg.data, 'stay')
         self.vision_ready = True
     
-    def movement_callback(self, msg: MovementComplete):
-        self.movement_complete = True
+    def movement_callback(self, msg: Bool):
+        self.movement_complete = msg.data
     
     def calculate_hand_value(self, cards):
         value = 0
@@ -87,15 +83,14 @@ class BlackjackFSM:
         return value
     
     def publish_movement(self, mode):
-        msg = MovementControl()
-        msg.header.stamp = rospy.Time.now()
-        msg.mode = mode
+        msg = String()
+        msg.data = mode
         self.movement_control.publish(msg)
         self.movement_complete = False  # Reset flag
     
     def publish_vision(self, mode):
-        msg = VisionControl()
-        msg.mode = mode
+        msg = String()
+        msg.data = mode
         self.vision_control.publish(msg)
     
     def run(self):
