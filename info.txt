@@ -83,3 +83,26 @@ To stop the container when you're done:
 ```powershell
 docker-compose down
 ```
+
+
+
+What I have learned:
+
+make a catkin ws
+
+source every single time you make a terminal OR do it again when you catkin_make
+create a package with the proper dependencies inside the catkin ws source folder
+create a scripts folder in the package
+put the python scripts in and then make sure to change them to executable
+add in the proper CMakeLists.txt changes for running them as python scripts - also may need to add again for runtime?
+go back to catkin ws top level folder and run catkin make - don't forget to source again
+
+running the nodes:
+open a terminal in the ros container
+source it
+run roscore
+open another terminal, source it
+run "rosrun PACKAGE_NAME SCRIPT_NAME.py"
+do another terminal for each script you want to run and follow the same last 2 steps
+
+ctrl+c to end the node - have to do each separately
