@@ -11,7 +11,7 @@ class CameraNode:
         rospy.init_node('camera_node', anonymous=True)
         
         # Get parameters
-        self.debug_mode = True
+        self.debug_mode = False
         
         rospy.loginfo(f"[camera_node] Initialized with debug_mode: {self.debug_mode}")
         

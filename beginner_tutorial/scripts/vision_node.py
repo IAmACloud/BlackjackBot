@@ -89,7 +89,7 @@ class VisionNode:
 
         # Initialize flags and buffers first
         self.collect_rps = False
-        self.collect_cards = True
+        self.collect_cards = False
         self.rps_buffer = []
         self.card_buffer = []
         self.current_img = None
