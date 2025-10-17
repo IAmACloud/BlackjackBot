@@ -5,9 +5,9 @@
 #include <std_msgs/Bool.h>
 #include <std_msgs/Header.h>
 #include <std_msgs/UInt16.h>
-
 //#include "MovementControl.h"
 //#include "MovementComplete.h"
+#include <string>
 
 ros::NodeHandle hubert;
 
@@ -65,9 +65,7 @@ int count = 0;
 
 std_msgs::Bool complete;
 //Publisher
-ros::Publisher movement_complete("movement_complete", &complete);
-ros::Publisher camera_up("camera_up", &complete);
-ros::Publisher camera_down("camera_down", &complete);
+ros::Publisher movement_complete("/movement/complete", &complete);
 
 void actuate_servo(Servo &servo, int servo_index, const int new_pos) {
   int diff, steps, now, CurrPwm, NewPwm, delta = 6;
@@ -100,6 +98,16 @@ void actuate_dodge() {
   actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(gripper, GRIPPER, gripperClosed);
 } 
+
+void actuate_init() {
+  actuate_servo(body, BODY, pos_init[BODY]);
+  actuate_servo(headPan, HEAD_PAN, pos_init[HEAD_PAN]);
+  actuate_servo(headTilt, HEAD_TILT, pos_init[HEAD_TILT]);
+  actuate_servo(shoulder, SHOULDER, pos_init[SHOULDER]);
+  actuate_servo(elbow, ELBOW, pos_init[ELBOW]);
+  actuate_servo(gripper, GRIPPER, pos_init[GRIPPER]);
+  actuate_servo(wrist, WRIST, pos_init[WRIST]);
+}
 
 // Help functions for atomic robot behaviour
 void actuate_headUp() {
@@ -194,156 +202,129 @@ void actuate_celebrateHouse() {
   actuate_servo(shoulder, SHOULDER, pos_init[SHOULDER]);
 }
 
-//Functions for the messages we subscribe for:
-void start_sequence(const std_msgs::String& start_msg) {
-  const String& msg = start_msg.data;
-  if(msg == "START GAME"){
-    //Raise arm in safe way
+bool contains(const String& text, const String& sub){
+  return text.indexOf(sub) >= 0;
+}
+
+void message_handler(const std_msgs::String& msg) {
+  const String& msg_content = msg.data; 
+  std::string content = std::string(msg_content.c_str());
+  unsigned int length = msg_content.length();
+  if(contains(msg_content, "DEAL")) {
+    char last_char = msg_content.charAt(msg_content.length() - 1);
+    if (last_char < '0' || last_char > '9') return;
+    int player = last_char - '0';
+
+    switch(player) {
+      case 0:
+        //deal to house
+        actuate_deck();
+        actuate_dealHouse();
+        complete.data = true;
+        //complete.header.stamp = ros::Time::now();
+        movement_complete.publish(&complete);
+        break;
+      case 1:
+        actuate_deck();
+        actuate_dealP1();
+        complete.data = true;
+        //complete.header = ros::Time::now();
+        movement_complete.publish(&complete);
+        break;
+      case 2:
+        actuate_deck();
+        actuate_dealP2();
+        complete.data = true;
+        //complete.header = ros::Time::now();
+        movement_complete.publish(&complete);
+        break;
+    }
+  }
+  else if(contains(msg_content, "TURN")) {
+    char last_char = msg_content.charAt(msg_content.length() - 1);
+    if (last_char < '0' || last_char > '9') return;
+    int player = last_char - '0';
+    switch(player){
+      case 0:
+        //turn to House
+        actuate_turnHouse();
+        complete.data = true;
+        //complete.header = ros::Time::now();
+        movement_complete.publish(&complete);
+        break;
+      case 1:
+        //turn to p1
+        actuate_turnP1();
+        complete.data = true;
+        //complete.header = ros::Time::now();
+        movement_complete.publish(&complete);
+        break;
+      case 2:
+        //turn to P2
+        actuate_turnP2();
+        complete.data = true;
+        //complete.header = ros::Time::now();
+        movement_complete.publish(&complete);
+        break;
+    }
+  }
+  else if(contains(msg_content, "CELEBRATE")) {
+    char last_char = msg_content.charAt(msg_content.length() - 1);
+    if (last_char < '0' || last_char > '9') return;
+    int player = last_char - '0';
+    switch(player){
+      case 0:
+        //celebrate House
+        actuate_celebrateHouse();
+        complete.data = true;
+        //complete.header = ros::Time::now();
+        movement_complete.publish(&complete);
+        break;
+      case 1:
+        //celebrate p1
+        actuate_celebrateP1();
+        complete.data = true;
+        //complete.header = ros::Time::now();
+        movement_complete.publish(&complete);
+        
+        break;
+      case 2:
+        //celebrate P2
+        actuate_celebrateP2();
+        complete.data = true;
+        //complete.header = ros::Time::now();
+        movement_complete.publish(&complete);
+        break;
+    }
+  }
+  else if(contains(msg_content, "CAMERA_UP")){
+    //move camera up
+    actuate_headUp();
+    complete.data = true;
+    //complete.header = ros::Time::now();
+    movement_complete.publish(&complete);
+  }
+  else if(contains(msg_content, "CAMERA_DOWN")){
+    //move camera down
+    actuate_headDown();
+    complete.data = true;
+    //complete.header = ros::Time::now();
+    movement_complete.publish(&complete);
+  }
+  else if(contains(msg_content, "END_GAME")) {
+    //Lower arm in safe way and return to init position
     actuate_dodge();
+    actuate_init();
     complete.data = true;
     //complete.header = ros::Time::now();
     movement_complete.publish(&complete);
   }
   else {
-    // bad string
+    //bad message
     complete.data = false;
     //complete.header = ros::Time::now();
     movement_complete.publish(&complete);
   }
-}
-
-void deal_card(const std_msgs::String& deal_msg){
-  const String msg = deal_msg.data;
-  //get player (digit)
-  char last_char = msg.charAt(msg.length() - 1);
-  if (last_char < '0' || last_char > '9') return;
-  int player = last_char - '0';
-  switch(player){
-    case 0:
-      //deal to house
-      actuate_deck();
-      actuate_dealHouse();
-      complete.data = true;
-      //complete.header.stamp = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-    
-    case 1:
-      actuate_deck();
-      actuate_dealP1();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-
-    case 2:
-      actuate_deck();
-      actuate_dealP2();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-    
-    default:
-      //bad string
-      complete.data = false;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-  }
-}
-
-void turn_direction(const std_msgs::String& turn_msg){
-  const String& msg = turn_msg.data;
-  //get player (digit)
-  char last_char = msg.charAt(msg.length() - 1);
-  if (last_char < '0' || last_char > '9') return;
-  int player = last_char - '0';
-  switch(player){
-    case 0:
-      //turn to House
-      actuate_turnHouse();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-    case 1:
-      //turn to p1
-      actuate_turnP1();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-    case 2:
-      //turn to P2
-      actuate_turnP2();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-    default:
-      //bad message
-      complete.data = false;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-  }
-}
-
-void celebrate(const std_msgs::String& celeb_msg){  
-  const String& msg = celeb_msg.data;
-  //get player (digit)
-  char last_char = msg.charAt(msg.length() - 1);
-  if (last_char < '0' || last_char > '9') return;
-  int player = last_char - '0';
-  switch(player){
-    case 0:
-      //celebrate House
-      actuate_celebrateHouse();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-    case 1:
-      //celebrate p1
-      actuate_celebrateP1();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      
-      break;
-    case 2:
-      //celebrate P2
-      actuate_celebrateP2();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-    default:
-      //bad message
-      complete.data = false;
-      //complete.header = ros::Time::now();
-      movement_complete.publish(&complete);
-      break;
-  }
-}
-
-void move_camera(const std_msgs::String& cam_msg){
-  const String& msg = cam_msg.data;
-  if(msg == "CAMERA UP"){
-      //move camera up
-      actuate_headUp();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      camera_up.publish(&complete);
-    }
-    else if(msg == "CAMERA DOWN"){
-      //move camera down
-      actuate_headDown();
-      complete.data = true;
-      //complete.header = ros::Time::now();
-      camera_down.publish(&complete);
-    }
 }
 
 //For testing ROS-connection
@@ -353,26 +334,20 @@ void messageCb(const std_msgs::UInt16& msg){
 }
 
 //Subscriber
-ros::Subscriber<std_msgs::String> subStart("start", &start_sequence);
-ros::Subscriber<std_msgs::String> subDeal("deal_card", &deal_card);
-ros::Subscriber<std_msgs::String> subTurn("turn_direction", &turn_direction);
-ros::Subscriber<std_msgs::String> subCeleb("celebrate", &celebrate);
-ros::Subscriber<std_msgs::String> subMoveCam("move_camera", &move_camera);
-ros::Subscriber<std_msgs::UInt16> subEcho("chatter", messageCb);
+ros::Subscriber<std_msgs::String> movement_control("/movement/control", &message_handler);
+//ros::Subscriber<std_msgs::UInt16> subEcho("chatter", &messageCb);
+
 void setup() {
   Serial.begin(57600); // Starts the serial communication
-  //hubert.getHardware()->setPort(&Serial);
-  hubert.getHardware()->setPort(&SerialUSB);
+  hubert.getHardware()->setPort(&Serial);
+  //hubert.getHardware()->setPort(&SerialUSB);
   hubert.initNode();
-  hubert.subscribe(subStart);
-  hubert.subscribe(subDeal);
-  hubert.subscribe(subTurn);
-  hubert.subscribe(subCeleb);
-  hubert.subscribe(subMoveCam);
-
-  hubert.advertise(movement_complete);
+  hubert.subscribe(movement_control);
+ 
   //For testing ROS-connection
   //hubert.subscribe(subEcho);
+
+  hubert.advertise(movement_complete);
 
 	//Attach each joint servo
 	//and write each init position
@@ -409,6 +384,8 @@ void setup() {
 void loop() {
   if(count == 0) {
     actuate_dodge();
+    complete.data = true;
+    movement_complete.publish(&complete);
     count++;
   }
   hubert.spinOnce();
