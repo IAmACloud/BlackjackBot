@@ -7,9 +7,25 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   sensor_msgs
   cv_bridge
+  message_generation
 )
 
-catkin_package()
+add_message_files(
+  FILES
+  RpsResult.msg
+  CardResult.msg
+  VisionControl.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  sensor_msgs
+)
+
+catkin_package(
+  CATKIN_DEPENDS message_runtime std_msgs sensor_msgs
+)
 
 include_directories(
   ${catkin_INCLUDE_DIRS}

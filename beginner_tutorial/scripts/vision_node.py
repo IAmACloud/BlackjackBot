@@ -4,16 +4,21 @@ import rospy
 from std_msgs.msg import Header, String, UInt8
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
+from beginner_tutorial.msg import RpsResult, CardResult, VisionControl
 from ultralytics import YOLO
 import random
+import rospkg
 
 class ModelManager:
     def __init__(self, simulation_mode=False):
         self.simulation_mode = simulation_mode
         if not self.simulation_mode:
-            self.rps_model = YOLO("yolo11-rps-detection.pt")
+            rospack = rospkg.RosPack()
+            pkg_path = rospack.get_path('beginner_tutorial')
+            
+            self.rps_model = YOLO(f"{pkg_path}/weights/yolo11-rps-detection.pt")
             self.rps_classnames = ["paper","rock","scissors"]
-            self.card_model = YOLO("yolov8s_playing_cards.pt")
+            self.card_model = YOLO(f"{pkg_path}/weights/yolov8s_playing_cards.pt")
             self.card_classnames = [
                 'AC','2C','3C','4C','5C','6C','7C','8C','9C','10C','JC','QC','KC',
                 'AD','2D','3D','4D','5D','6D','7D','8D','9D','10D','JD','QD','KD',
@@ -73,61 +78,63 @@ class VisionNode:
         rospy.init_node('vision_node', anonymous=False)
         p = rospy.get_param('vision_node',{})
         self.camera_topic = p.get('camera_topic','/camera/image_raw')
-        self.frame_rate = float(p.get('frame_rate',15))
+        self.frame_rate = float(p.get('frame_rate',10))
         self.rps_conf = float(p.get('rps_confidence',0.8))
-        self.card_conf = float(p.get('card_confidence',0.85))
+        self.card_conf = float(p.get('card_confidence',0.5))
         self.compile_frames = int(p.get('compile_frames',8))
-        self.percent_required = float(p.get('percent_compiled_required',0.6))
-        self.simulation_mode = bool(p.get('simulation_mode',True))
+        self.percent_required = float(p.get('percent_compiled_required',0.1))
+        self.simulation_mode = bool(p.get('simulation_mode',False))
 
         rospy.loginfo(f"[vision_node] Initialized with camera_topic: {self.camera_topic}, frame_rate: {self.frame_rate}, simulation_mode: {self.simulation_mode}")
 
-        # Publishers
-        self.pub_rps = rospy.Publisher('/vision/rps_result', UInt8, queue_size=10)
-        self.pub_card = rospy.Publisher('/vision/card_result', String, queue_size=10)
-
-        # Subscribers
-        self.sub_ctrl = rospy.Subscriber('/vision/control', String, self.control_cb, queue_size=5)
-        self.bridge = CvBridge()
-        self.sub_image = rospy.Subscriber(self.camera_topic,Image,self.image_cb,queue_size=1)
+        # Initialize flags and buffers first
+        self.collect_rps = False
+        self.collect_cards = True
+        self.rps_buffer = []
+        self.card_buffer = []
+        self.current_img = None
 
         # Model
         self.model_mgr = ModelManager(simulation_mode=self.simulation_mode)
 
-        # Buffers
-        self.rps_buffer = []
-        self.card_buffer = []
+        # Publishers
+        self.pub_rps = rospy.Publisher('/vision/rps_result', RpsResult, queue_size=10)
+        self.pub_card = rospy.Publisher('/vision/card_result', CardResult, queue_size=10)
 
-        # Flags
-        self.collect_rps = False
-        self.collect_cards = False
-
-        self.current_img = None
+        # Subscribers
+        self.bridge = CvBridge()
+        self.sub_ctrl = rospy.Subscriber('/vision/control', String, self.control_cb, queue_size=5)
+        self.sub_image = rospy.Subscriber(self.camera_topic,Image,self.image_cb,queue_size=1)
 
     # ---------------- control callback ----------------
-    def control_cb(self, msg: String):
-        mode = msg.data.strip().lower()
+    def control_cb(self, msg: VisionControl):
+        mode = msg.mode.strip().upper()
         rospy.loginfo(f"[vision_node] Control received: {mode}")
         if mode == "RPS_START":
             self.collect_rps = True
-            self.rps_buffer.clear()
         elif mode == "RPS_STOP":
             self.collect_rps = False
             self.rps_buffer.clear()
         elif mode=="CARDS_START":
             self.collect_cards = True
-            self.card_buffer.clear()
         elif mode == "CARDS_STOP":
             self.collect_cards = False
+            self.card_buffer.clear()
+        elif mode=="BOTH_START":
+            self.collect_rps = True
+            self.collect_cards = True
+        elif mode=="BOTH_STOP":
+            self.collect_rps = False
+            self.collect_cards = False
+            self.rps_buffer.clear()
             self.card_buffer.clear()
 
     # ---------------- image callback ----------------
     def image_cb(self,img_msg:Image):
-        if self.collect_rps or self.collect_cards:
-            try:
-                self.current_img = self.bridge.imgmsg_to_cv2(img_msg,desired_encoding='bgr8')
-            except CvBridgeError as e:
-                rospy.logerr(f"CvBridge error: {e}")
+        try:
+            self.current_img = self.bridge.imgmsg_to_cv2(img_msg,desired_encoding='bgr8')
+        except CvBridgeError as e:
+            rospy.logerr(f"CvBridge error: {e}")
 
     # ---------------- main loop ----------------
     def spin(self):
@@ -167,8 +174,10 @@ class VisionNode:
         ratio = counts[top_label]/len(buf)
         if ratio >= self.percent_required:
             avg_conf = sum(confs[top_label])/len(confs[top_label])
-            msg = UInt8()
-            msg.data = {'R':1,'P':2,'S':3}[top_label]
+            msg = RpsResult()
+            msg.header.stamp = rospy.Time.now()
+            msg.result = {'R':1,'P':2,'S':3}[top_label]
+            msg.confidence = avg_conf
             self.pub_rps.publish(msg)
             rospy.loginfo(f"[vision_node] RPS result: {top_label} (ratio: {ratio:.2f}, conf: {avg_conf:.2f})")
 
@@ -184,12 +193,14 @@ class VisionNode:
         for card,cnt in counts.items():
             if cnt/len(buf) >= self.percent_required:
                 avg_conf = sum(confs[card])/len(confs[card])
-                msg = String()
-                msg.data = card
+                msg = CardResult()
+                msg.header.stamp = rospy.Time.now()
+                msg.card = card
+                msg.confidence = avg_conf
                 self.pub_card.publish(msg)
                 rospy.loginfo(f"[vision_node] Card result: {card} (ratio: {cnt/len(buf):.2f}, conf: {avg_conf:.2f})")
 
-if __name__=="__main__":
+if __name__=='__main__':
     try:
         node = VisionNode()
         node.spin()
