@@ -37,7 +37,7 @@ enum ServoIndex {
 const int servo_pins[SERVO_COUNT] = {7, 2, 6, 9, 10, 11, 8};
 
 int curr_pos[SERVO_COUNT];
-const int pos_init[SERVO_COUNT] =  {1700, 1500, 1460, 2300, 900, 1000, 450};
+const int pos_init[SERVO_COUNT] =  {1700, 1500, 1760, 2300, 900, 1000, 450};
 
 // to be updated
 const int bodyDeck = 1000;
@@ -119,19 +119,23 @@ void actuate_headDown() {
 }
 
 void actuate_turnP1() {
+  actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(body, BODY, bodyP1);
 } 
 
 void actuate_turnP2() {
+  actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(body, BODY, bodyP2);
 } 
 
 void actuate_turnHouse() {
+  actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(body, BODY, bodyHouse);
 } 
 
 // Pick card from deck
 void actuate_deck() {
+  actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(body, BODY, bodyDeck);
   actuate_servo(elbow, ELBOW, elbowDeck);
   actuate_servo(elbow, ELBOW, elbowRaised);
@@ -139,6 +143,7 @@ void actuate_deck() {
 
 // Deal card to Player 1
 void actuate_dealP1() {
+  actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(body, BODY, bodyP1);
   actuate_servo(wrist, WRIST, wristPlace);
   actuate_servo(elbow, ELBOW, elbowPlace);
@@ -147,10 +152,12 @@ void actuate_dealP1() {
   actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(gripper, GRIPPER, gripperClosed);
   actuate_servo(headPan, HEAD_PAN, headDown);
+  actuate_servo(elbow, ELBOW, elbowPlace);
 } 
 
 // Deal card to Player 2
 void actuate_dealP2() {
+  actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(body, BODY, bodyP2);
   actuate_servo(wrist, WRIST, wristPlace);
   actuate_servo(elbow, ELBOW, elbowPlace);
@@ -159,10 +166,12 @@ void actuate_dealP2() {
   actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(gripper, GRIPPER, gripperClosed);
   actuate_servo(headPan, HEAD_PAN, headDown);
+  actuate_servo(elbow, ELBOW, elbowPlace);
 } 
 
 // Deal card to House
 void actuate_dealHouse() {
+  actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(body, BODY, bodyHouse);
   actuate_servo(wrist, WRIST, wristPlace);
   actuate_servo(elbow, ELBOW, elbowPlace);
@@ -171,6 +180,7 @@ void actuate_dealHouse() {
   actuate_servo(elbow, ELBOW, elbowRaised);
   actuate_servo(gripper, GRIPPER, gripperClosed);
   actuate_servo(headPan, HEAD_PAN, headDown);
+  actuate_servo(elbow, ELBOW, elbowPlace);
 } 
 
 // Celebrate Player 1
