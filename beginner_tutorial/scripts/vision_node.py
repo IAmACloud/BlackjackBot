@@ -103,7 +103,7 @@ class VisionNode:
 
         # Subscribers
         self.bridge = CvBridge()
-        self.sub_ctrl = rospy.Subscriber('/vision/control', String, self.control_cb, queue_size=5)
+        self.sub_ctrl = rospy.Subscriber('/vision/control', VisionControl, self.control_cb, queue_size=5)
         self.sub_image = rospy.Subscriber(self.camera_topic,Image,self.image_cb,queue_size=1)
 
     # ---------------- control callback ----------------

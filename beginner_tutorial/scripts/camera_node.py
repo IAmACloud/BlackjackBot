@@ -19,7 +19,7 @@ class CameraNode:
         self.bridge = CvBridge()
           
         # Create a publisher to verify the processed image
-        self.image_pub = rospy.Publisher('/camera/image_raw', Image, queue_size=100)
+        self.image_pub = rospy.Publisher('/camera/image_raw', Image, queue_size=10)
 
         # Initialize camera with error checking
         self.video_source = cv2.VideoCapture(1)

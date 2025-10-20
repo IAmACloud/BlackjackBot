@@ -6,6 +6,9 @@
 #
 # Use what we know about what is left in the deck to decide if s card is correct.
 
+# TODO: Add timeout handling for vision results to avoid getting stuck.
+# TODO: after turning to someone, he should check the cards (should post camera up or camera down)
+
 import rospy
 from std_msgs.msg import Bool, UInt8, String
 from beginner_tutorial.msg import RpsResult, CardResult, VisionControl
@@ -131,6 +134,7 @@ class BlackjackFSM:
     
     def run(self):
         rate = rospy.Rate(10)  # 10Hz
+        rospy.loginfo(f"[blackjack_fsm] {self.game_state})")
         
         while not rospy.is_shutdown():
             # Check for card collection timeout
@@ -141,8 +145,7 @@ class BlackjackFSM:
                         self.player_cards[self.current_player].append(card)
                     self.last_card = self.player_cards[self.current_player][-1] if self.player_cards[self.current_player] else None
                 self.pending_cards = set()
-                self.waiting_for_cards = False
-                self.card_wait_start = None
+                self.publish_vision("CARDS_STOP")  # Stop vision after timeout and appending
             
             if self.game_state == GameState.INIT:
                 # Wait for nodes ready: assume ready when first messages received
@@ -184,19 +187,19 @@ class BlackjackFSM:
                         self.publish_movement(f"DEAL {self.current_player}")
                         self.deal1_done = True
                         self.movement_complete = False
-                    elif self.movement_complete and not self.deal2_done:
-                        self.publish_movement(f"DEAL {self.current_player}")
-                        self.deal2_done = True
-                        self.movement_complete = False
                     elif self.movement_complete and not self.card_checked:
                         if not self.card_check_pending:
                             self.publish_vision("CARDS_START")
                             self.card_check_pending = True
-                        elif self.card_check_pending and self.last_card:
-                            self.player_cards[self.current_player].append(self.last_card)
-                            self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
-                            self.publish_vision("CARDS_STOP")
-                            self.last_card = None
+                        elif self.card_check_pending and not self.waiting_for_cards:
+                            # After CARDS_STOP (via timeout or manual stop), append collected cards
+                            if self.pending_cards:
+                                for card in self.pending_cards:
+                                    if card not in self.seen_cards:
+                                        self.seen_cards.add(card)
+                                        self.player_cards[self.current_player].append(card)
+                                self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
+                            self.pending_cards = set()
                             self.card_checked = True
                             self.reset_dealing_flags()
                             self.current_player += 1
@@ -205,11 +208,13 @@ class BlackjackFSM:
                     self.current_player = 1
                     self.game_state = GameState.PLAYER_TURN
                     self.reset_dealing_flags()
+                    rospy.loginfo("[blackjack_fsm] State changed to PLAYER_TURN")
             
             elif self.game_state == GameState.PLAYER_TURN:
                 if self.current_player <= self.num_players:
                     # Check if player busted
                     if self.player_values[self.current_player] > 21:
+                        rospy.loginfo(f"[blackjack_fsm] Player {self.current_player} busted with value {self.player_values[self.current_player]}")
                         self.current_player += 1
                         continue
                     
