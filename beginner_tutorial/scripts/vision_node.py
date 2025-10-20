@@ -88,7 +88,7 @@ class VisionNode:
         rospy.loginfo(f"[vision_node] Initialized with camera_topic: {self.camera_topic}, frame_rate: {self.frame_rate}, simulation_mode: {self.simulation_mode}")
 
         # Initialize flags and buffers first
-        self.collect_rps = False
+        self.collect_rps = True
         self.collect_cards = False
         self.rps_buffer = []
         self.card_buffer = []

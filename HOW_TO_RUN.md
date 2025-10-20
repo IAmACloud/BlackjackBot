@@ -34,15 +34,15 @@ Note: if you want to rename the package, change the name of the `beginner_tutori
    --NEW TERMINAL--
    cd ~/catkin_ws
    source devel/setup.bash
+   rosrun beginner_tutorial main.py
+
+   --NEW TERMINAL--
+   cd ~/catkin_ws
+   source devel/setup.bash
    rosrun beginner_tutorial camera_node.py
 
    --NEW TERMINAL--
    cd ~/catkin_ws
    source devel/setup.bash
    rosrun beginner_tutorial vision_node.py
-
-   --NEW TERMINAL--
-   cd ~/catkin_ws
-   source devel/setup.bash
-   rosrun beginner_tutorial main.py
    ```

@@ -3,9 +3,7 @@
 # This function implements the finite state machine for the blackjack game.
 # It manages the game flow, including dealing cards, handling commanding movements to the movement node,
 # and processing results from the vision node.
-
-# TODO: Update to use vision node messages.
-# Use confidence threshold to decide whether a card is real or not.
+#
 # Use what we know about what is left in the deck to decide if s card is correct.
 
 import rospy
@@ -149,6 +147,7 @@ class BlackjackFSM:
             if self.game_state == GameState.INIT:
                 # Wait for nodes ready: assume ready when first messages received
                 if self.vision_ready and self.movement_complete:
+                    self.publish_vision("RPS_STOP")
                     self.game_state = GameState.START_GAME
                     rospy.loginfo("[blackjack_fsm] State changed to START_GAME")
             
