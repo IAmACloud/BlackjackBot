@@ -99,23 +99,6 @@ class BlackjackFSM:
     def movement_callback(self, msg: Bool):
         self.movement_complete = msg.data
     
-    def calculate_hand_value(self, cards):
-        value = 0
-        aces = 0
-        for card in cards:
-            rank = card[:-1]  # Remove suit
-            if rank == 'A':
-                aces += 1
-                value += 11
-            elif rank in ['J', 'Q', 'K']:
-                value += 10
-            else:
-                value += int(rank)
-        while value > 21 and aces:
-            value -= 10
-            aces -= 1
-        return value
-    
     def publish_movement(self, mode):
         msg = String()
         msg.data = mode
@@ -145,6 +128,34 @@ class BlackjackFSM:
             self.rps_wait_start = None
             self.pending_rps = {}
         rospy.loginfo(f"[blackjack_fsm] Published vision control: {mode}")
+
+    def calculate_hand_value(self, cards):
+        value = 0
+        aces = 0
+        for card in cards:
+            rank = card[:-1]  # Remove suit
+            if rank == 'A':
+                aces += 1
+                value += 11
+            elif rank in ['J', 'Q', 'K']:
+                value += 10
+            else:
+                value += int(rank)
+        while value > 21 and aces:
+            value -= 10
+            aces -= 1
+        return value
+
+    def reset_dealing_flags(self, player):
+        self.turn_done[player] = False
+        self.deal1_done[player] = False
+        self.deal2_done[player] = False
+        self.card_checked[player] = False
+        self.house_dealing[player] = False
+        self.card_check_pending[player] = False
+        self.camera_down_for_check[player] = False
+        self.cards_verified[player] = False
+        rospy.loginfo(f"[blackjack_fsm] Reset dealing flags for player {player}")
     
     def run(self):
         rate = rospy.Rate(10)  # 10Hz
@@ -373,17 +384,6 @@ class BlackjackFSM:
                 break
             
             rate.sleep()
-    
-    def reset_dealing_flags(self, player):
-        self.turn_done[player] = False
-        self.deal1_done[player] = False
-        self.deal2_done[player] = False
-        self.card_checked[player] = False
-        self.house_dealing[player] = False
-        self.card_check_pending[player] = False
-        self.camera_down_for_check[player] = False
-        self.cards_verified[player] = False
-        rospy.loginfo(f"[blackjack_fsm] Reset dealing flags for player {player}")
 
 if __name__ == '__main__':
     try:
