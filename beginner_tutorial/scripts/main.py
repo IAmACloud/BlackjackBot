@@ -6,9 +6,6 @@
 #
 # Use what we know about what is left in the deck to decide if s card is correct.
 
-# TODO: Add timeout handling for vision results to avoid getting stuck.
-# TODO: after turning to someone, he should check the cards (should post camera up or camera down)
-
 import rospy
 from std_msgs.msg import Bool, UInt8, String
 from beginner_tutorial.msg import RpsResult, CardResult, VisionControl
