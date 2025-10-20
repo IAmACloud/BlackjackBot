@@ -10,6 +10,7 @@
 
 import rospy
 from std_msgs.msg import Bool, UInt8, String
+from beginner_tutorial.msg import RpsResult, CardResult, VisionControl
 from enum import Enum
 
 class GameState(Enum):
@@ -35,6 +36,11 @@ class BlackjackFSM:
         self.last_card = None
         self.last_rps = None
         self.vision_ready = False  # TBD, assume ready for now
+        self.seen_cards = set()
+        self.waiting_for_cards = False
+        self.card_wait_start = None
+        self.pending_cards = set()  # unique cards
+        self.card_check_pending = False
         
         # Player data: index 0 is house
         self.player_cards = [[] for _ in range(self.num_players + 1)]
@@ -42,11 +48,11 @@ class BlackjackFSM:
         
         # Publishers
         self.movement_control = rospy.Publisher('/movement/control', String, queue_size=10)
-        self.vision_control = rospy.Publisher('/vision/control', String, queue_size=10)
+        self.vision_control = rospy.Publisher('/vision/control', VisionControl, queue_size=10)
         
         # Subscribers
-        rospy.Subscriber('/vision/card_result', String, self.card_callback)
-        rospy.Subscriber('/vision/rps_result', UInt8, self.rps_callback)
+        rospy.Subscriber('/vision/card_result', CardResult, self.card_callback)
+        rospy.Subscriber('/vision/rps_result', RpsResult, self.rps_callback)
         rospy.Subscriber('/movement/complete', Bool, self.movement_callback)
         
         # Flags for sequencing
@@ -58,14 +64,29 @@ class BlackjackFSM:
         
         rospy.loginfo(f"[blackjack_fsm] Initialized with num_players: {self.num_players}")
     
-    def card_callback(self, msg: String):
-        self.last_card = msg.data
-        self.vision_ready = True  # Assume ready on first message
+    def card_callback(self, msg: CardResult):
+        card_str = msg.card
+        parts = card_str.split()
+        if parts and parts[0].isdigit():
+            num = int(parts[0])
+            card = parts[1]
+            if num > 1 and card.endswith('s'):
+                card = card[:-1]
+        else:
+            card = card_str
+        if self.waiting_for_cards:
+            if card not in self.seen_cards:
+                self.pending_cards.add(card)
+        else:
+            if card not in self.seen_cards:
+                self.seen_cards.add(card)
+                self.last_card = card
+                self.vision_ready = True  # Assume ready on first message
     
-    def rps_callback(self, msg: UInt8):
+    def rps_callback(self, msg: RpsResult):
         # Map result to action: 1=R(hit), 2=P(stay), 3=S(stay)
         actions = {1: 'hit', 2: 'stay', 3: 'stay'}
-        self.last_rps = actions.get(msg.data, 'stay')
+        self.last_rps = actions.get(msg.result, 'stay')
         self.vision_ready = True
     
     def movement_callback(self, msg: Bool):
@@ -96,15 +117,35 @@ class BlackjackFSM:
         rospy.loginfo(f"[blackjack_fsm] Published movement control: {mode}")
     
     def publish_vision(self, mode):
-        msg = String()
-        msg.data = mode
+        msg = VisionControl()
+        msg.header.stamp = rospy.Time.now()
+        msg.mode = mode
         self.vision_control.publish(msg)
+        if mode == "CARDS_START":
+            self.waiting_for_cards = True
+            self.card_wait_start = rospy.Time.now()
+            self.pending_cards = set()
+        elif mode == "CARDS_STOP":
+            self.waiting_for_cards = False
+            self.card_wait_start = None
+            self.pending_cards = set()
         rospy.loginfo(f"[blackjack_fsm] Published vision control: {mode}")
     
     def run(self):
         rate = rospy.Rate(10)  # 10Hz
         
         while not rospy.is_shutdown():
+            # Check for card collection timeout
+            if self.waiting_for_cards and self.card_wait_start and (rospy.Time.now() - self.card_wait_start).to_sec() > 5.0:
+                if self.pending_cards:
+                    for card in self.pending_cards:
+                        self.seen_cards.add(card)
+                        self.player_cards[self.current_player].append(card)
+                    self.last_card = self.player_cards[self.current_player][-1] if self.player_cards[self.current_player] else None
+                self.pending_cards = set()
+                self.waiting_for_cards = False
+                self.card_wait_start = None
+            
             if self.game_state == GameState.INIT:
                 # Wait for nodes ready: assume ready when first messages received
                 if self.vision_ready and self.movement_complete:
@@ -112,6 +153,8 @@ class BlackjackFSM:
                     rospy.loginfo("[blackjack_fsm] State changed to START_GAME")
             
             elif self.game_state == GameState.START_GAME:
+                # Reset seen cards for new game
+                self.seen_cards = set()
                 # Deal house card
                 self.publish_movement("DEAL 0")
                 self.game_state = GameState.DEAL_HOUSE_INITIAL
@@ -147,8 +190,10 @@ class BlackjackFSM:
                         self.deal2_done = True
                         self.movement_complete = False
                     elif self.movement_complete and not self.card_checked:
-                        self.publish_vision("CARDS_START")
-                        if self.last_card:
+                        if not self.card_check_pending:
+                            self.publish_vision("CARDS_START")
+                            self.card_check_pending = True
+                        elif self.card_check_pending and self.last_card:
                             self.player_cards[self.current_player].append(self.last_card)
                             self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
                             self.publish_vision("CARDS_STOP")
@@ -180,14 +225,15 @@ class BlackjackFSM:
                         if not self.camera_down:
                             self.publish_movement("CAMERA_DOWN")
                             self.camera_down = True
-                        else:
+                        elif not self.card_check_pending:
                             self.publish_vision("CARDS_START")
-                            if self.last_card:
-                                self.player_cards[self.current_player].append(self.last_card)
-                                self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
-                                self.publish_vision("CARDS_STOP")
-                                self.last_card = None
-                                self.card_checked = True
+                            self.card_check_pending = True
+                        elif self.card_check_pending and self.last_card:
+                            self.player_cards[self.current_player].append(self.last_card)
+                            self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
+                            self.publish_vision("CARDS_STOP")
+                            self.last_card = None
+                            self.card_checked = True
                     elif self.movement_complete and self.card_checked and not self.deal2_done:  # After card check
                         if self.player_values[self.current_player] > 21:
                             self.reset_dealing_flags()
@@ -230,13 +276,16 @@ class BlackjackFSM:
                             self.house_dealing = True
                             self.movement_complete = False
                         elif self.movement_complete and self.house_dealing:
-                            self.publish_vision("CARDS_START")
-                            if self.last_card:
+                            if not self.card_check_pending:
+                                self.publish_vision("CARDS_START")
+                                self.card_check_pending = True
+                            elif self.card_check_pending and self.last_card:
                                 self.player_cards[0].append(self.last_card)
                                 self.player_values[0] = self.calculate_hand_value(self.player_cards[0])
                                 self.publish_vision("CARDS_STOP")
                                 self.last_card = None
                                 self.house_dealing = False
+                                self.card_check_pending = False
                     else:
                         self.publish_movement("CAMERA_UP")
                         self.camera_down = False
@@ -272,6 +321,7 @@ class BlackjackFSM:
         self.deal2_done = False
         self.card_checked = False
         self.house_dealing = False
+        self.card_check_pending = False
 
 if __name__ == '__main__':
     try:
