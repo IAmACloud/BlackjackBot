@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-
-# This function implements the finite state machine for the blackjack game.
-# It manages the game flow, including dealing cards, handling commanding movements to the movement node,
-# and processing results from the vision node.
+"""
+This function implements the finite state machine for the blackjack game.
+It manages the game flow, including dealing cards, handling commanding movements to the movement node,
+and processing results from the vision node.
+"""
 
 import rospy
 from std_msgs.msg import Bool, UInt8, String
@@ -82,18 +83,14 @@ class BlackjackFSM:
         if self.waiting_for_cards:
             if card not in self.seen_cards:
                 self.pending_cards.add(card)
-        else:
-            if card not in self.seen_cards:
-                self.seen_cards.add(card)
-                self.last_card = card
     
     def rps_callback(self, msg: RpsResult):
         if self.waiting_for_rps:
             self.pending_rps[msg.result] += msg.confidence
-        else:
+        #else:
             # Fallback: map result to action if not waiting
-            actions = {1: 'hit', 2: 'stay', 3: 'stay'}
-            self.last_rps = actions.get(msg.result, 'stay')
+            #actions = {1: 'hit', 2: 'stay', 3: 'stay'}
+            #self.last_rps = actions.get(msg.result, 'stay')
 
     def vision_callback(self, msg: Bool):
         self.vision_ready = msg.data
@@ -168,6 +165,31 @@ class BlackjackFSM:
     # --- Game State Management ---------------------------------------------------------------------------------------------------
     
     def run(self):
+        """
+        Main game loop that orchestrates the blackjack game finite state machine.
+        This method runs continuously at 10Hz until ROS shutdown, managing all game states
+        from initialization through game completion. It handles timeouts for card and RPS
+        (Rock-Paper-Scissors) detection, coordinates movement and vision systems, and 
+        implements the complete blackjack game flow.
+        Game States Managed:
+        - INIT: Wait for vision and movement nodes to be ready
+        - START_GAME: Reset game data and begin dealing
+        - DEAL_HOUSE_INITIAL: Deal initial card to house/dealer
+        - CAMERA_DOWN_INITIAL: Lower camera to view cards
+        - DEALING_PLAYERS_INITIAL: Deal first card to each player
+        - PLAYER_TURN: Handle each player's turn (hit/stay decisions via RPS)
+        - HOUSE_TURN: House plays according to standard rules (hit until 17+)
+        - GAME_END: Determine winners and celebrate
+        Timeout Handling:
+        - Card collection: 5 second timeout for vision to detect cards
+        - RPS collection: 5 second timeout for gesture recognition
+        The method coordinates between movement commands (dealing, camera positioning)
+        and vision commands (card detection, RPS gesture recognition) while maintaining
+        game state and player hand values.
+        Returns:
+            None: Method runs until game completion or ROS shutdown
+        """
+        # Set the main loop rate to 10Hz for responsive state management
         rate = rospy.Rate(10)  # 10Hz
         rospy.loginfo(f"[blackjack_fsm] {self.game_state}")
         
@@ -181,16 +203,19 @@ class BlackjackFSM:
                     self.last_card = self.player_cards[self.current_player][-1] if self.player_cards[self.current_player] else None
                 self.pending_cards = set()
                 self.publish_vision("CARDS_STOP")  # Stop vision after timeout and appending
+                rospy.loginfo(f"[blackjack_fsm] Card collection timeout for player {self.current_player}. Hand: {self.player_cards[self.current_player]}")
             
             # Check for RPS collection timeout
             if self.waiting_for_rps and self.rps_wait_start and (rospy.Time.now() - self.rps_wait_start).to_sec() > 5.0:
                 if self.pending_rps:
                     max_key = max(self.pending_rps, key=self.pending_rps.get)
                     actions = {1: 'hit', 2: 'stay', 3: 'stay'}
-                    self.last_rps = actions.get(max_key, 'stay')
+                    # select action based on highest confidence and number of seen frames, defaults to stay
+                    self.last_rps = actions.get(max_key, 'stay') 
                 else:
                     self.last_rps = 'stay'  # default if no messages
                 self.publish_vision("RPS_STOP")
+                rospy.loginfo(f"[blackjack_fsm] RPS collection timeout for player {self.current_player}. Selected action: {self.last_rps}")
             
             # State: INIT - Wait for vision and movement nodes to be ready before starting the game
             if self.game_state == GameState.INIT:
@@ -198,7 +223,7 @@ class BlackjackFSM:
                 if self.vision_ready and self.movement_complete:
                     # Nodes are ready, transition to start game
                     self.game_state = GameState.START_GAME
-                    rospy.loginfo("[blackjack_fsm] State changed to START_GAME")
+                    rospy.loginfo("[blackjack_fsm] =====STATE CHANGED TO: START_GAME")
             
             # State: START_GAME - Reset game data and deal the initial house card
             elif self.game_state == GameState.START_GAME:
@@ -207,7 +232,7 @@ class BlackjackFSM:
                 # Command to deal the house's initial card
                 self.publish_movement("DEAL 0")
                 self.game_state = GameState.DEAL_HOUSE_INITIAL
-                rospy.loginfo("[blackjack_fsm] State changed to DEAL_HOUSE_INITIAL")
+                rospy.loginfo("[blackjack_fsm] =====STATE CHANGED TO: DEAL_HOUSE_INITIAL")
             
             # State: DEAL_HOUSE_INITIAL - Wait for house card to be dealt, then lower camera
             elif self.game_state == GameState.DEAL_HOUSE_INITIAL:
@@ -216,7 +241,7 @@ class BlackjackFSM:
                     self.publish_movement("CAMERA_DOWN")
                     self.camera_down = True
                     self.game_state = GameState.CAMERA_DOWN_INITIAL
-                    rospy.loginfo("[blackjack_fsm] State changed to CAMERA_DOWN_INITIAL")
+                    rospy.loginfo("[blackjack_fsm] =====STATE CHANGED TO: CAMERA_DOWN_INITIAL")
             
             # State: CAMERA_DOWN_INITIAL - Wait for camera to lower, then start dealing to players
             elif self.game_state == GameState.CAMERA_DOWN_INITIAL:
@@ -225,7 +250,7 @@ class BlackjackFSM:
                     self.current_player = 1
                     self.reset_dealing_flags(1)
                     self.game_state = GameState.DEALING_PLAYERS_INITIAL
-                    rospy.loginfo("[blackjack_fsm] State changed to DEALING_PLAYERS_INITIAL")
+                    rospy.loginfo("[blackjack_fsm] =====STATE CHANGED TO: DEALING_PLAYERS_INITIAL")
             
             # State: DEALING_PLAYERS_INITIAL - Deal one card to each player initially
             elif self.game_state == GameState.DEALING_PLAYERS_INITIAL:
@@ -261,7 +286,7 @@ class BlackjackFSM:
                     self.current_player = 1
                     self.game_state = GameState.PLAYER_TURN
                     self.reset_dealing_flags(1)
-                    rospy.loginfo("[blackjack_fsm] State changed to PLAYER_TURN")
+                    rospy.loginfo("[blackjack_fsm] =====STATE CHANGED TO: PLAYER_TURN")
             
             # State: PLAYER_TURN - Handle each player's turn: check existing cards, deal second card, check RPS for hit/stay
             elif self.game_state == GameState.PLAYER_TURN:
@@ -284,23 +309,28 @@ class BlackjackFSM:
                         self.camera_down = True
                         self.movement_complete = False
                     # Start vision to check cards
-                    elif self.movement_complete and self.camera_down_for_check[self.current_player] and not self.cards_verified[self.current_player]:
-                        self.publish_vision("CARDS_START")
-                        self.cards_verified[self.current_player] = True
+                    #elif self.movement_complete and self.camera_down_for_check[self.current_player] and not self.cards_verified[self.current_player]:
+                    #    self.publish_vision("CARDS_START")
+                    #    self.cards_verified[self.current_player] = True
                     # Deal second card if cards verified and not dealt
-                    elif self.movement_complete and self.cards_verified[self.current_player] and not self.deal1_done[self.current_player] and not self.waiting_for_cards:
+                    elif self.movement_complete and not self.deal1_done[self.current_player]:
                         self.publish_movement(f"DEAL {self.current_player}")
                         self.deal1_done[self.current_player] = True
                         self.movement_complete = False
                     # Check card if deal done and not checked
-                    elif self.movement_complete and not self.card_checked[self.current_player]:
+                    elif self.movement_complete and not self.card_checked[self.current_player] and self.deal1_done[self.current_player]:
                         if not self.card_check_pending[self.current_player]:
                             self.publish_vision("CARDS_START")
                             self.card_check_pending[self.current_player] = True
-                        elif self.card_check_pending[self.current_player] and self.last_card:
-                            self.player_cards[self.current_player].append(self.last_card)
-                            self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
-                            self.last_card = None
+                        elif self.card_check_pending[self.current_player] and not self.waiting_for_cards:
+                            # Assign card
+                            if self.pending_cards:
+                                for card in self.pending_cards:
+                                    if card not in self.seen_cards:
+                                        self.seen_cards.add(card)
+                                        self.player_cards[self.current_player].append(card)
+                                self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
+                            self.pending_cards = set()
                             self.card_checked[self.current_player] = True
                     # After card check, check if busted or proceed
                     elif self.movement_complete and self.card_checked[self.current_player] and not self.deal2_done[self.current_player]:  # After card check
@@ -313,24 +343,22 @@ class BlackjackFSM:
                         self.deal2_done[self.current_player] = True
                         self.movement_complete = False
                     # Wait for camera up, then start RPS
-                    elif self.movement_complete and self.deal2_done[self.current_player] and not self.turn_done[self.current_player]:
+                    elif self.movement_complete and self.deal2_done[self.current_player]:
                         self.publish_vision("RPS_START")
-                        self.turn_done[self.current_player] = False
                     # Process RPS result
-                    elif self.last_rps:
+                    elif self.last_rps and not self.waiting_for_rps:
                         if self.last_rps == 'hit':
                             # Reset for another deal
                             self.reset_dealing_flags(self.current_player)
                             # Stay in state
-                        else:
-                            self.publish_vision("RPS_STOP")
+                        else: # Stay (no more cards for this player)
                             self.last_rps = None
-                            self.reset_dealing_flags(self.current_player)
                             self.current_player += 1
                 else:
                     # All players done, house turn
                     self.game_state = GameState.HOUSE_TURN
                     self.reset_dealing_flags(0)
+                    rospy.loginfo("[blackjack_fsm] =====STATE CHANGED TO: HOUSE TURN")
             
             # State: HOUSE_TURN - House plays: deal cards until 17 or higher
             elif self.game_state == GameState.HOUSE_TURN:
@@ -344,8 +372,24 @@ class BlackjackFSM:
                     self.publish_movement("CAMERA_DOWN")
                     self.camera_down = True
                     self.movement_complete = False
+                # Check existing house cards if not verified
+                elif self.movement_complete and self.camera_down and not self.cards_verified[0]:
+                    if not self.card_check_pending[0]:
+                        self.publish_vision("CARDS_START")
+                        self.card_check_pending[0] = True
+                    elif self.card_check_pending[0] and not self.waiting_for_cards:
+                        # Assign existing house cards
+                        if self.pending_cards:
+                            for card in self.pending_cards:
+                                if card not in self.seen_cards:
+                                    self.seen_cards.add(card)
+                                    self.player_cards[0].append(card)
+                            self.player_values[0] = self.calculate_hand_value(self.player_cards[0])
+                        self.pending_cards = set()
+                        self.cards_verified[0] = True
+                        self.card_check_pending[0] = False
                 # House dealing logic
-                elif self.movement_complete and self.camera_down:
+                elif self.movement_complete and self.camera_down and self.cards_verified[0]:
                     if self.player_values[0] < 17:
                         if not self.house_dealing[0]:
                             self.publish_movement("DEAL 0")
@@ -355,11 +399,15 @@ class BlackjackFSM:
                             if not self.card_check_pending[0]:
                                 self.publish_vision("CARDS_START")
                                 self.card_check_pending[0] = True
-                            elif self.card_check_pending[0] and self.last_card:
-                                self.player_cards[0].append(self.last_card)
-                                self.player_values[0] = self.calculate_hand_value(self.player_cards[0])
-                                self.publish_vision("CARDS_STOP")
-                                self.last_card = None
+                            elif self.card_check_pending[0] and not self.waiting_for_cards:
+                                # Assign card
+                                if self.pending_cards:
+                                    for card in self.pending_cards:
+                                        if card not in self.seen_cards:
+                                            self.seen_cards.add(card)
+                                            self.player_cards[0].append(card)
+                                    self.player_values[0] = self.calculate_hand_value(self.player_cards[0])
+                                self.pending_cards = set()
                                 self.house_dealing[0] = False
                                 self.card_check_pending[0] = False
                     else:
@@ -367,6 +415,7 @@ class BlackjackFSM:
                         self.publish_movement("CAMERA_UP")
                         self.camera_down = False
                         self.game_state = GameState.GAME_END
+                        rospy.loginfo("[blackjack_fsm] =====STATE CHANGED TO: GAME_END")
             
             # State: GAME_END - Determine winners and celebrate
             elif self.game_state == GameState.GAME_END:
