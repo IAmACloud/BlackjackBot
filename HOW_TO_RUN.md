@@ -45,4 +45,17 @@ Note: if you want to rename the package, change the name of the `beginner_tutori
    cd ~/catkin_ws
    source devel/setup.bash
    rosrun beginner_tutorial vision_node.py
+
+   --NEW TERMINAL--
+   cd ~/catkin_ws
+   source devel/setup.bash
+   rosrun rosserial_python serial_node.py _port:=/dev/ttyACM0
    ```
+
+8. Run the movement node .ino file on your Arduino using the Arduino IDE.
+   - Make sure you have the `rosserial_arduino` library installed in your Arduino IDE.
+   - Make sure that you have the VM configured to allow access to the serial port.
+   - Ensure the serial port in the `serial_node.py` command matches the port your Arduino is connected to.
+   - Upload the `.ino` file located in the `beginner_tutorial/arduino` folder to your Arduino board.
+
+   

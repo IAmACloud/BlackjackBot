@@ -3,8 +3,6 @@
 # This function implements the finite state machine for the blackjack game.
 # It manages the game flow, including dealing cards, handling commanding movements to the movement node,
 # and processing results from the vision node.
-#
-# Use what we know about what is left in the deck to decide if s card is correct.
 
 import rospy
 from std_msgs.msg import Bool, UInt8, String
