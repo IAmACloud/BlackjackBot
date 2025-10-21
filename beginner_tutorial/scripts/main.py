@@ -41,6 +41,7 @@ class BlackjackFSM:
         self.waiting_for_rps = False
         self.rps_wait_start = None
         self.pending_rps = {1: 0.0, 2: 0.0, 3: 0.0}  # scores for R, P, S
+        self.end_game_calculated = False
         
         # Player data: index 0 is house
         self.player_cards = [[] for _ in range(self.num_players + 1)]
@@ -65,6 +66,10 @@ class BlackjackFSM:
         self.card_check_pending = [False] * (self.num_players + 1)
         self.camera_down_for_check = [False] * (self.num_players + 1)
         self.cards_verified = [False] * (self.num_players + 1)
+        self.requested_rps = [False] * (self.num_players + 1)
+        
+        # Pending movements for sequential execution
+        self.pending_movements = []
         
         rospy.loginfo(f"[blackjack_fsm] Initialized with num_players: {self.num_players}")
 
@@ -96,19 +101,6 @@ class BlackjackFSM:
         self.vision_ready = msg.data
         rospy.loginfo(f"[blackjack_fsm] Vision ready status: {self.vision_ready}")
 
-    # --- Movement pub/sub ---
-    
-    def movement_callback(self, msg: Bool):
-        self.movement_complete = msg.data
-        rospy.loginfo(f"[blackjack_fsm] Movement complete status: {self.movement_complete}")
-
-    def publish_movement(self, mode):
-        msg = String()
-        msg.data = mode
-        self.movement_control.publish(msg)
-        self.movement_complete = False  # Reset flag
-        rospy.loginfo(f"[blackjack_fsm] Published movement control: {mode}")
-    
     def publish_vision(self, mode):
         msg = VisionControl()
         msg.header.stamp = rospy.Time.now()
@@ -131,6 +123,20 @@ class BlackjackFSM:
             self.rps_wait_start = None
             self.pending_rps = {}
         rospy.loginfo(f"[blackjack_fsm] Published vision control: {mode}")
+
+    # --- Movement pub/sub ---
+    
+    def movement_callback(self, msg: Bool):
+        self.movement_complete = msg.data
+        rospy.loginfo(f"[blackjack_fsm] Movement complete status: {self.movement_complete}")
+
+    def publish_movement(self, mode):
+        msg = String()
+        msg.data = mode
+        self.movement_control.publish(msg)
+        self.movement_complete = False  # Reset flag
+        rospy.loginfo(f"[blackjack_fsm] Published movement control: {mode}")
+    
 
     #--- Game Logic Helpers ---
 
@@ -160,6 +166,7 @@ class BlackjackFSM:
         self.card_check_pending[player] = False
         self.camera_down_for_check[player] = False
         self.cards_verified[player] = False
+        self.requested_rps[player] = False
         rospy.loginfo(f"[blackjack_fsm] Reset dealing flags for player {player}")
 
     # --- Game State Management ---------------------------------------------------------------------------------------------------
@@ -203,13 +210,14 @@ class BlackjackFSM:
                     self.last_card = self.player_cards[self.current_player][-1] if self.player_cards[self.current_player] else None
                 self.pending_cards = set()
                 self.publish_vision("CARDS_STOP")  # Stop vision after timeout and appending
-                rospy.loginfo(f"[blackjack_fsm] Card collection timeout for player {self.current_player}. Hand: {self.player_cards[self.current_player]}")
-            
+                self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
+                rospy.loginfo(f"[blackjack_fsm] Card collection timeout for player {self.current_player}. Hand: {self.player_cards[self.current_player]}, Score: {self.player_values[self.current_player]}")
+                
             # Check for RPS collection timeout
             if self.waiting_for_rps and self.rps_wait_start and (rospy.Time.now() - self.rps_wait_start).to_sec() > 5.0:
-                if self.pending_rps:
+                if any(conf > 0 for conf in self.pending_rps.values()):  # Check if any confidence > 0:
                     max_key = max(self.pending_rps, key=self.pending_rps.get)
-                    actions = {1: 'hit', 2: 'stay', 3: 'stay'}
+                    actions = {1: 'stay', 2: 'hit', 3: 'stay'} # 1: Paper, 2: Rock, 3: Scissors
                     # select action based on highest confidence and number of seen frames, defaults to stay
                     self.last_rps = actions.get(max_key, 'stay') 
                 else:
@@ -330,26 +338,26 @@ class BlackjackFSM:
                                         self.seen_cards.add(card)
                                         self.player_cards[self.current_player].append(card)
                                 self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
+                                rospy.loginfo(f"[blackjack_fsm] Player {self.current_player}, value: {self.player_values[self.current_player]}")
                             self.pending_cards = set()
                             self.card_checked[self.current_player] = True
                     # After card check, check if busted or proceed
                     elif self.movement_complete and self.card_checked[self.current_player] and not self.deal2_done[self.current_player]:  # After card check
-                        if self.player_values[self.current_player] > 21:
-                            self.reset_dealing_flags(self.current_player)
-                            self.current_player += 1
-                            continue
+                        rospy.loginfo(f"[blackjack_fsm] Player {self.current_player} hand: {self.player_cards[self.current_player]}, value: {self.player_values[self.current_player]}")
                         self.publish_movement("CAMERA_UP")
                         self.camera_down = False
                         self.deal2_done[self.current_player] = True
                         self.movement_complete = False
                     # Wait for camera up, then start RPS
-                    elif self.movement_complete and self.deal2_done[self.current_player]:
+                    elif self.movement_complete and self.deal2_done[self.current_player] and not self.requested_rps[self.current_player]:
                         self.publish_vision("RPS_START")
+                        self.requested_rps[self.current_player] = True
                     # Process RPS result
                     elif self.last_rps and not self.waiting_for_rps:
                         if self.last_rps == 'hit':
                             # Reset for another deal
                             self.reset_dealing_flags(self.current_player)
+                            self.last_rps = None
                             # Stay in state
                         else: # Stay (no more cards for this player)
                             self.last_rps = None
@@ -419,26 +427,38 @@ class BlackjackFSM:
             
             # State: GAME_END - Determine winners and celebrate
             elif self.game_state == GameState.GAME_END:
-                # Calculate house value
-                house_value = self.player_values[0]
-                winners = []
-                tie = False
-                for p in range(1, self.num_players + 1):
-                    pv = self.player_values[p]
-                    if pv <= 21 and (pv > house_value or house_value > 21):
-                        winners.append(p)
-                    elif pv == house_value and pv <= 21:
-                        tie = True
-                
-                # Celebrate winners
-                for w in winners:
-                    self.publish_movement(f"CELEBRATE {w}")
-                if tie and not winners:
-                    self.publish_movement("TIE")
-                # End game
-                self.publish_movement("END_GAME")
-                # Exit
-                break
+                if self.movement_complete:
+                    if not self.pending_movements and not self.end_game_calculated:
+                        # Calculate house value
+                        house_value = self.player_values[0]
+                        winners = []
+                        tie = False
+                        for p in range(1, self.num_players + 1):
+                            pv = self.player_values[p]
+                            if pv <= 21 and (pv > house_value or house_value > 21):
+                                winners.append(p)
+                            elif (pv == house_value and pv <= 21) or (house_value > 21 and pv > 21):
+                                tie = True
+                        if not winners and not tie:
+                            rospy.loginfo(f"[blackjack_fsm] No winners this round. House wins with value: {house_value}")
+                        else:
+                            rospy.loginfo(f"[blackjack_fsm] Game over. House value: {house_value}. Winners: {winners}, Tie: {tie}")
+                        
+                        # Populate pending movements
+                        for w in winners:
+                            self.pending_movements.append(f"CELEBRATE {w}")
+                        self.pending_movements.append("END_GAME")
+                        self.end_game_calculated = True
+                    
+                    if self.pending_movements:
+                        move = self.pending_movements.pop(0)
+                        self.publish_movement(move)
+                        if move == "END_GAME":
+                            # After publishing END_GAME, wait for complete, then break on next iteration
+                            pass
+                    else:
+                        # All movements done, exit
+                        break
             
             rate.sleep()
 
