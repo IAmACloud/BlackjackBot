@@ -97,11 +97,13 @@ class BlackjackFSM:
 
     def vision_callback(self, msg: Bool):
         self.vision_ready = msg.data
+        rospy.loginfo(f"[blackjack_fsm] Vision ready status: {self.vision_ready}")
 
     # --- Movement pub/sub ---
     
     def movement_callback(self, msg: Bool):
         self.movement_complete = msg.data
+        rospy.loginfo(f"[blackjack_fsm] Movement complete status: {self.movement_complete}")
 
     def publish_movement(self, mode):
         msg = String()
@@ -163,11 +165,11 @@ class BlackjackFSM:
         self.cards_verified[player] = False
         rospy.loginfo(f"[blackjack_fsm] Reset dealing flags for player {player}")
 
-    # --- Game State Management ---
+    # --- Game State Management ---------------------------------------------------------------------------------------------------
     
     def run(self):
         rate = rospy.Rate(10)  # 10Hz
-        rospy.loginfo(f"[blackjack_fsm] {self.game_state})")
+        rospy.loginfo(f"[blackjack_fsm] {self.game_state}")
         
         while not rospy.is_shutdown():
             # Check for card collection timeout
@@ -194,8 +196,7 @@ class BlackjackFSM:
             if self.game_state == GameState.INIT:
                 # Check if vision has sent messages and movement is complete
                 if self.vision_ready and self.movement_complete:
-                    # Nodes are ready, stop any ongoing RPS vision and transition to start game
-                    self.publish_vision("RPS_STOP")
+                    # Nodes are ready, transition to start game
                     self.game_state = GameState.START_GAME
                     rospy.loginfo("[blackjack_fsm] State changed to START_GAME")
             
@@ -287,7 +288,7 @@ class BlackjackFSM:
                         self.publish_vision("CARDS_START")
                         self.cards_verified[self.current_player] = True
                     # Deal second card if cards verified and not dealt
-                    elif self.movement_complete and self.cards_verified[self.current_player] and not self.deal1_done[self.current_player]:
+                    elif self.movement_complete and self.cards_verified[self.current_player] and not self.deal1_done[self.current_player] and not self.waiting_for_cards:
                         self.publish_movement(f"DEAL {self.current_player}")
                         self.deal1_done[self.current_player] = True
                         self.movement_complete = False
@@ -299,7 +300,6 @@ class BlackjackFSM:
                         elif self.card_check_pending[self.current_player] and self.last_card:
                             self.player_cards[self.current_player].append(self.last_card)
                             self.player_values[self.current_player] = self.calculate_hand_value(self.player_cards[self.current_player])
-                            self.publish_vision("CARDS_STOP")
                             self.last_card = None
                             self.card_checked[self.current_player] = True
                     # After card check, check if busted or proceed
