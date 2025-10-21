@@ -53,6 +53,7 @@ class BlackjackFSM:
         rospy.Subscriber('/vision/card_result', CardResult, self.card_callback)
         rospy.Subscriber('/vision/rps_result', RpsResult, self.rps_callback)
         rospy.Subscriber('/movement/complete', Bool, self.movement_callback)
+        rospy.Subscriber('/vision/ready', Bool, self.vision_callback)
         
         # Flags for sequencing (per player, index 0 for house)
         self.turn_done = [False] * (self.num_players + 1)
@@ -65,6 +66,8 @@ class BlackjackFSM:
         self.cards_verified = [False] * (self.num_players + 1)
         
         rospy.loginfo(f"[blackjack_fsm] Initialized with num_players: {self.num_players}")
+
+    # --- Vision pub/sub ---
     
     def card_callback(self, msg: CardResult):
         card_str = msg.card
@@ -83,7 +86,6 @@ class BlackjackFSM:
             if card not in self.seen_cards:
                 self.seen_cards.add(card)
                 self.last_card = card
-                self.vision_ready = True  # Assume ready on first message
     
     def rps_callback(self, msg: RpsResult):
         if self.waiting_for_rps:
@@ -92,11 +94,15 @@ class BlackjackFSM:
             # Fallback: map result to action if not waiting
             actions = {1: 'hit', 2: 'stay', 3: 'stay'}
             self.last_rps = actions.get(msg.result, 'stay')
-            self.vision_ready = True
+
+    def vision_callback(self, msg: Bool):
+        self.vision_ready = msg.data
+
+    # --- Movement pub/sub ---
     
     def movement_callback(self, msg: Bool):
         self.movement_complete = msg.data
-    
+
     def publish_movement(self, mode):
         msg = String()
         msg.data = mode
@@ -127,6 +133,8 @@ class BlackjackFSM:
             self.pending_rps = {}
         rospy.loginfo(f"[blackjack_fsm] Published vision control: {mode}")
 
+    #--- Game Logic Helpers ---
+
     def calculate_hand_value(self, cards):
         value = 0
         aces = 0
@@ -154,6 +162,8 @@ class BlackjackFSM:
         self.camera_down_for_check[player] = False
         self.cards_verified[player] = False
         rospy.loginfo(f"[blackjack_fsm] Reset dealing flags for player {player}")
+
+    # --- Game State Management ---
     
     def run(self):
         rate = rospy.Rate(10)  # 10Hz
@@ -224,7 +234,7 @@ class BlackjackFSM:
                         self.publish_movement(f"TURN {self.current_player}")
                         self.turn_done[self.current_player] = True
                     # Deal first card if movement complete and not dealt
-                    elif self.movement_complete and self.cards_verified[self.current_player] and not self.deal1_done[self.current_player]:
+                    elif self.movement_complete and not self.deal1_done[self.current_player]:
                         self.publish_movement(f"DEAL {self.current_player}")
                         self.deal1_done[self.current_player] = True
                         self.movement_complete = False
