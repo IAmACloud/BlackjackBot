@@ -19,16 +19,12 @@ class ModelManager:
             self.rps_model = YOLO(f"{pkg_path}/weights/yolo11-rps-detection.pt")
             self.rps_classnames = ["paper","rock","scissors"]
             self.card_model = YOLO(f"{pkg_path}/weights/yolov8s_playing_cards.pt")
-            self.card_classnames = [
-                'AC','2C','3C','4C','5C','6C','7C','8C','9C','10C','JC','QC','KC',
-                'AD','2D','3D','4D','5D','6D','7D','8D','9D','10D','JD','QD','KD',
-                'AH','2H','3H','4H','5H','6H','7H','8H','9H','10H','JH','QH','KH',
-                'AS','2S','3S','4S','5S','6S','7S','8S','9S','10S','JS','QS','KS'
-            ]
-        self._rps_cycle = ['R','P','S']
-        self._rps_idx = 0
-        self._cards_cycle = ['AC','2C','3D','KH','QS','10H','JC']
-        self._cards_idx = 0
+            self.card_classnames = self.card_model.names
+        else:
+            self._rps_cycle = ['R','P','S']
+            self._rps_idx = 0
+            self._cards_cycle = ['AC','2C','3D','KH','QS','10H','JC']
+            self._cards_idx = 0
 
     def detect_rps(self, img):
         if self.simulation_mode:
@@ -82,7 +78,7 @@ class VisionNode:
         self.rps_conf = float(p.get('rps_confidence',0.8))
         self.card_conf = float(p.get('card_confidence',0.5))
         self.compile_frames = int(p.get('compile_frames',8))
-        self.percent_required = float(p.get('percent_compiled_required',0.1))
+        self.percent_required = float(p.get('percent_compiled_required',0.6))
         self.simulation_mode = bool(p.get('simulation_mode',False))
 
         rospy.loginfo(f"[vision_node] Initialized with camera_topic: {self.camera_topic}, frame_rate: {self.frame_rate}, simulation_mode: {self.simulation_mode}")
