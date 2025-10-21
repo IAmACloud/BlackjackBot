@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rospy
-from std_msgs.msg import Header, String, UInt8
+from std_msgs.msg import Header, String, UInt8, Bool
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from beginner_tutorial.msg import RpsResult, CardResult, VisionControl
@@ -100,6 +100,7 @@ class VisionNode:
         # Publishers
         self.pub_rps = rospy.Publisher('/vision/rps_result', RpsResult, queue_size=10)
         self.pub_card = rospy.Publisher('/vision/card_result', CardResult, queue_size=10)
+        self.pub_status = rospy.Publisher('/vision/ready', Bool, queue_size=10)
 
         # Subscribers
         self.bridge = CvBridge()
@@ -139,6 +140,10 @@ class VisionNode:
     # ---------------- main loop ----------------
     def spin(self):
         rate = rospy.Rate(self.frame_rate)
+        rospy.sleep(0.5)
+        self.pub_status.publish(Bool(data=True))
+        rospy.loginfo("📢 VisionNode is active.")
+
         while not rospy.is_shutdown():
             if self.current_img is not None:
                 # RPS detection
